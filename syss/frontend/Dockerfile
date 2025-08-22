@@ -3,7 +3,7 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml* ./
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate \
-  && pnpm install --frozen-lockfile
+  && pnpm install --prefer-offline --no-frozen-lockfile
 
 FROM node:20-alpine AS builder
 WORKDIR /app
