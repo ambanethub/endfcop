@@ -1,0 +1,78 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: syss-ingress
+  namespace: syss
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "realtime-service"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: syss.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 3000
+          - path: /auth/
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: 8080
+          - path: /ops/
+            pathType: Prefix
+            backend:
+              service:
+                name: ops-service
+                port:
+                  number: 8080
+          - path: /geo/
+            pathType: Prefix
+            backend:
+              service:
+                name: geo-service
+                port:
+                  number: 8080
+          - path: /messages/
+            pathType: Prefix
+            backend:
+              service:
+                name: message-service
+                port:
+                  number: 8080
+          - path: /reports/
+            pathType: Prefix
+            backend:
+              service:
+                name: report-service
+                port:
+                  number: 8080
+          - path: /realtime/
+            pathType: Prefix
+            backend:
+              service:
+                name: realtime-service
+                port:
+                  number: 8080
+          - path: /replay/
+            pathType: Prefix
+            backend:
+              service:
+                name: replay-service
+                port:
+                  number: 8080
+          - path: /av/
+            pathType: Prefix
+            backend:
+              service:
+                name: av-signal-service
+                port:
+                  number: 8080
