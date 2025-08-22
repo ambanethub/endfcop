@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ROOT_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
 
-if docker info >/dev/null 2>&1; then
-	echo "[DEV] Stopping Docker services"
-	docker compose down -v --remove-orphans | cat
-else
-	echo "[WARN] Docker daemon not reachable; nothing to stop." >&2
-fi
+export COMPOSE_PROJECT_NAME=syss
+cd "$ROOT_DIR"
+
+echo "[dev-down] Stopping containers..."
+docker compose down -v --remove-orphans || true
+
+echo "[dev-down] Done."

@@ -2,10 +2,10 @@ import './globals.css'
 import type { Metadata, Viewport } from 'next'
 import { ReactQueryClientProvider } from '../lib/react-query'
 
-export const metadata: Metadata = {
-	title: 'SYSS COP',
-	description: 'Common Operational Picture Platform',
-}
+export const metadata = {
+  title: "SYSS COP",
+  description: "Common Operational Picture",
+};
 
 export function generateViewport(): Viewport {
 	return {
@@ -16,13 +16,9 @@ export function generateViewport(): Viewport {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-	return (
-		<html lang="en">
-			<body>
-				<ReactQueryClientProvider>
-					{children}
-				</ReactQueryClientProvider>
-			</body>
-		</html>
-	)
+  return (
+    <html lang="en">
+      <body style={{ margin: 0 }}>{children}</body>
+    </html>
+  );
 }
