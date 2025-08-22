@@ -1,61 +1,52 @@
 package io.syss.auth.service;
 
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.io.Decoders;
-import io.jsonwebtoken.security.Keys;
+import com.nimbusds.jose.JOSEObjectType;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.JWSSigner;
+import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jwt.SignedJWT;
+import com.nimbusds.jwt.JWTClaimsSet;
 import io.syss.auth.model.User;
-import org.springframework.beans.factory.annotation.Value;
+import io.syss.auth.security.KeyService;
 import org.springframework.stereotype.Service;
 
-import java.security.Key;
 import java.time.Instant;
 import java.util.Date;
-import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class JwtService {
-	private final Key key;
-	private final String issuer;
-	private final long accessTtlSeconds;
-	private final long refreshTtlSeconds;
+    private final KeyService keys;
 
-	public JwtService(
-		@Value("${security.jwt.secret}") String secret,
-		@Value("${security.jwt.issuer}") String issuer,
-		@Value("${security.jwt.access-ttl-seconds}") long accessTtlSeconds,
-		@Value("${security.jwt.refresh-ttl-seconds}") long refreshTtlSeconds
-	) {
-		this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(java.util.Base64.getEncoder().encodeToString(secret.getBytes())));
-		this.issuer = issuer;
-		this.accessTtlSeconds = accessTtlSeconds;
-		this.refreshTtlSeconds = refreshTtlSeconds;
-	}
+    public JwtService(KeyService keys) {
+        this.keys = keys;
+    }
 
-	public String createAccessToken(User user) {
-		Instant now = Instant.now();
-		return Jwts.builder()
-			.setSubject(user.getUsername())
-			.setIssuer(issuer)
-			.setIssuedAt(Date.from(now))
-			.setExpiration(Date.from(now.plusSeconds(accessTtlSeconds)))
-			.addClaims(Map.of(
-				"role", user.getRole().name(),
-				"uid", user.getId()
-			))
-			.signWith(key, SignatureAlgorithm.HS256)
-			.compact();
-	}
-
-	public String createRefreshToken(User user) {
-		Instant now = Instant.now();
-		return Jwts.builder()
-			.setSubject(user.getUsername())
-			.setIssuer(issuer)
-			.setIssuedAt(Date.from(now))
-			.setExpiration(Date.from(now.plusSeconds(refreshTtlSeconds)))
-			.claim("type", "refresh")
-			.signWith(key, SignatureAlgorithm.HS256)
-			.compact();
-	}
+    public String createAccessToken(User user) {
+        try {
+            RSAKey key = keys.getSigningKey();
+            JWSSigner signer = new RSASSASigner(key.toPrivateKey());
+            Instant now = Instant.now();
+            JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                .jwtID(UUID.randomUUID().toString())
+                .issuer("syss-auth")
+                .subject(user.getId().toString())
+                .claim("username", user.getUsername())
+                .claim("role", user.getRole())
+                .issueTime(Date.from(now))
+                .expirationTime(Date.from(now.plusSeconds(3600)))
+                .build();
+            JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)
+                .type(JOSEObjectType.JWT)
+                .keyID(key.getKeyID())
+                .build();
+            SignedJWT jwt = new SignedJWT(header, claims);
+            jwt.sign(signer);
+            return jwt.serialize();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to sign JWT", e);
+        }
+    }
 }

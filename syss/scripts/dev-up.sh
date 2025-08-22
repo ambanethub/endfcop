@@ -1,36 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ROOT_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
 
-./scripts/check-env.sh || true
+chmod +x "$SCRIPT_DIR"/*.sh || true
 
-if docker info >/dev/null 2>&1; then
-	echo "[DEV] Starting core dependencies (postgres, minio, kafka, jitsi)"
-	docker compose up -d postgres minio kafka prosody jicofo jvb web | cat
-else
-	echo "[WARN] Skipping Docker services (daemon unavailable). Start them manually when ready." >&2
+echo "[dev-up] Checking environment..."
+"$SCRIPT_DIR/check-env.sh"
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[dev-up] Docker is not installed. Please install Docker Desktop/Engine." >&2
+  exit 1
 fi
 
-# Backend services (start only those present and if mvn exists)
-if command -v mvn >/dev/null 2>&1 && [ -f backend/pom.xml ]; then
-	echo "[DEV] Building backend"
-	( cd backend && mvn -q -DskipTests install )
-	if [ -d backend/auth-service ]; then
-		echo "[DEV] Starting auth-service"
-		( cd backend/auth-service && mvn -q spring-boot:run ) &
-	fi
-else
-	echo "[INFO] Skipping local backend build (mvn not found). Use Docker images or install Maven." >&2
+if ! docker info >/dev/null 2>&1; then
+  echo "[dev-up] Docker daemon not available. If permission denied, run: sudo usermod -aG docker $USER && newgrp docker" >&2
+  exit 1
 fi
 
-# Frontend
-if command -v pnpm >/dev/null 2>&1 && [ -f frontend/package.json ]; then
-	echo "[DEV] Installing frontend deps"
-	( cd frontend && pnpm install --no-frozen-lockfile )
-	echo "[DEV] Starting frontend"
-	( cd frontend && pnpm dev ) &
+export COMPOSE_PROJECT_NAME=syss
+cd "$ROOT_DIR"
+
+echo "[dev-up] Building backend (skip tests)..."
+if command -v mvn >/dev/null 2>&1; then
+  mvn -q -f backend/pom.xml -DskipTests package || echo "[dev-up] Maven build failed; will rely on Docker build logs."
 else
-	echo "[INFO] Skipping frontend start (pnpm not found or package.json missing)." >&2
+  echo "[dev-up] Maven not found; skipping local build."
 fi
 
-wait || true
+echo "[dev-up] Installing frontend deps..."
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm -C frontend install || echo "[dev-up] pnpm install failed; will install during container build."
+fi
+
+echo "[dev-up] Starting Docker dependencies and apps..."
+docker compose up -d --build
+
+echo "[dev-up] Seeding demo data..."
+"$SCRIPT_DIR/seed.sh" || echo "[dev-up] Seed failed or skipped."
+
+echo "[dev-up] Done. Frontend: http://localhost:3000  API via Nginx: http://localhost:8080"

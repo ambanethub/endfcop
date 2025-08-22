@@ -1,0 +1,23 @@
+server:
+  port: 8080
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/syss}
+    username: ${SPRING_DATASOURCE_USERNAME:syss}
+    password: ${SPRING_DATASOURCE_PASSWORD:syss}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${AUTH_JWKS_URL:http://auth-service:8080/.well-known/jwks.json}
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

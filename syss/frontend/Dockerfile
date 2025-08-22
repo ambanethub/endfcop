@@ -1,22 +1,22 @@
-# syntax=docker/dockerfile:1.7
-FROM node:18.20-alpine AS deps
+# syntax=docker/dockerfile:1.7-labs
+FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml* ./
-RUN corepack enable && corepack prepare pnpm@9.9.0 --activate \
-	&& pnpm install --frozen-lockfile
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate \
+  && pnpm install --prefer-offline --no-frozen-lockfile
 
-FROM node:18.20-alpine AS build
+FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN corepack enable && corepack prepare pnpm@9.9.0 --activate \
-	&& pnpm build
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate \
+  && pnpm build
 
-FROM node:18.20-alpine AS runner
+FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app/.next ./.next
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
 EXPOSE 3000
-CMD ["node", "/app/node_modules/next/dist/bin/next", "start", "-p", "3000"]
+CMD ["node", ".next/standalone/server.js"]
