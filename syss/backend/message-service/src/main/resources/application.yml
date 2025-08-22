@@ -15,7 +15,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost/issuer
+          jwk-set-uri: ${AUTH_JWKS_URL:http://auth-service:8080/.well-known/jwks.json}
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
   accessKey: ${MINIO_ACCESS_KEY:syss}
