@@ -1,0 +1,164 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    container_name: syss-postgres
+    environment:
+      POSTGRES_USER: syss
+      POSTGRES_PASSWORD: syss
+      POSTGRES_DB: syss
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syss"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z
+    container_name: syss-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: syss
+      MINIO_ROOT_PASSWORD: sysssyss
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: syss-kafka
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:29092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@localhost:29092
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/bitnami/kafka
+
+  # Jitsi Meet stack (dev)
+  prosody:
+    image: jitsi/prosody:stable-8712
+    restart: unless-stopped
+    environment:
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_MUC_DOMAIN=muc.meet.jitsi
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
+      - JICOFO_COMPONENT_SECRET=somesecret
+      - JVB_AUTH_USER=jvb
+      - JVB_AUTH_PASSWORD=pass
+      - JICOFO_AUTH_USER=focus
+      - JICOFO_AUTH_PASSWORD=pass
+      - ENABLE_AUTH=0
+      - ENABLE_GUESTS=1
+    networks:
+      - jitsi
+
+  web:
+    image: jitsi/web:stable-8712
+    restart: unless-stopped
+    ports:
+      - "8443:443"
+    depends_on:
+      - prosody
+      - jicofo
+      - jvb
+    environment:
+      - ENABLE_AUTH=0
+      - ENABLE_GUESTS=1
+      - PUBLIC_URL=http://localhost:8443
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_MUC_DOMAIN=muc.meet.jitsi
+      - XMPP_BOSH_URL_BASE=http://prosody:5280
+      - TZ=UTC
+    networks:
+      - jitsi
+
+  jicofo:
+    image: jitsi/jicofo:stable-8712
+    restart: unless-stopped
+    depends_on:
+      - prosody
+    environment:
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_MUC_DOMAIN=muc.meet.jitsi
+      - JICOFO_COMPONENT_SECRET=somesecret
+      - JICOFO_AUTH_USER=focus
+      - JICOFO_AUTH_PASSWORD=pass
+      - TZ=UTC
+    networks:
+      - jitsi
+
+  jvb:
+    image: jitsi/jvb:stable-8712
+    restart: unless-stopped
+    depends_on:
+      - prosody
+    ports:
+      - "10000:10000/udp"
+    environment:
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_INTERNAL_MUC_DOMAIN=internal-muc.meet.jitsi
+      - XMPP_SERVER=prosody
+      - JVB_AUTH_USER=jvb
+      - JVB_AUTH_PASSWORD=pass
+      - TZ=UTC
+    networks:
+      - jitsi
+
+  # Placeholders for backend services - built locally when available
+  auth-service:
+    build: ./backend/auth-service
+    container_name: syss-auth-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/syss
+      - SPRING_DATASOURCE_USERNAME=syss
+      - SPRING_DATASOURCE_PASSWORD=syss
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=syss
+      - MINIO_SECRET_KEY=sysssyss
+      - JWT_SECRET=dev-secret-change
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    profiles: ["app"]
+
+  frontend:
+    build: ./frontend
+    container_name: syss-frontend
+    environment:
+      - NEXT_PUBLIC_API_BASE=http://localhost
+    ports:
+      - "3000:3000"
+    profiles: ["app"]
+
+volumes:
+  pg_data: {}
+  minio_data: {}
+  kafka_data: {}
+
+networks:
+  jitsi:
+    name: jitsi
+    driver: bridge
