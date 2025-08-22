@@ -1,0 +1,362 @@
+You are an expert full-stack engineer. Build a production-ready Common Operational Picture (COP) platform for military/security forces with real-time map, operations/tasking, intel/reports/messaging, AAR replay, offline sync, and secure voice/video conferencing.
+
+0) Constraints & Quality Bar
+
+Clean, documented code; typed everywhere (TypeScript / Java).
+
+Deterministic builds; containerized; infra-as-code; CI steps.
+
+Security first: RBAC, least privilege, validated inputs, rate limiting, audit logs.
+
+Handle low bandwidth and intermittent connectivity. Provide offline-first UX for field units.
+
+Address these known pitfalls proactively:
+
+Leaflet + Next.js SSR: load Leaflet client-side only; dynamic import with ssr:false. No window access server-side.
+
+React 19 peer conflicts: pin React to a compatible version for all UI deps (React 18 LTS) OR upgrade UI libs; choose one solution and ensure npm/pnpm install succeeds without --force.
+
+Spring Security imports: include correct Spring Security & OAuth2 dependencies; align with Spring Boot version; ensure WebSocket security compiles.
+
+Docker “permission denied” on daemon: document sudo usermod -aG docker $USER and re-login step in README; don’t fail scripts if docker isn’t available—print actionable message.
+
+IndexedDB key errors: validate keys before writes; wrap IDB transaction errors; schema versioning + migrations.
+
+Next.js metadata warnings: move themeColor/viewport to generateViewport() per Next 15 docs.
+
+1) High-Level Features
+
+Auth & Roles (RBAC + 2FA): Admin, Commander, Analyst/Intel, FieldUnit, Observer.
+
+Interactive Map (Leaflet/Mapbox): friendly (Blue), enemy/threats (Red), assets, incidents; NATO APP-6D symbology; drawing tools; layer toggles; geofences; routes/patrols; heatmaps; basemap switch.
+
+Operations & Tasking: create operations; objectives; assign units; statuses; ETA; geofenced tasks; escalation; audit trail.
+
+Messaging & Reports: secure messaging; SITREP/CONREP templates; file/image attachments; threaded channels per operation.
+
+AAR & Replay: timeline scrubber; event playback; metrics (task SLA, response times, fratricide risk, comms latency); export PDF/CSV.
+
+Offline & Sync: IndexedDB cache; queue mutations; conflict resolution (last-write-wins + server reconciliation rules).
+
+Real-time Updates: WebSockets (STOMP/SockJS or SSE) for positions, tasks, messages, overlays.
+
+Voice/Video Conferencing: WebRTC with SFU (choose mediasoup or Jitsi); signaling via backend; auth-gated rooms tied to operations; mute/unmute; screenshare; PTT; recordings; attendance logs.
+
+2) Architecture & Tech
+
+Frontend: Next.js (App Router), TypeScript, Zustand/Redux Toolkit for state, React Query for data, Leaflet + maplibre/mapbox-gl (pick one and be consistent), @orbat-mapper/-style or custom NATO symbology layer, shadcn/ui or Radix UI. Offline: IndexedDB via idb. WebSocket client + reconnect backoff.
+
+Backend: Java Spring Boot (3.x), modular microservices:
+
+auth-service (Keycloak integration optional; JWT/OAuth2 Resource Server; TOTP 2FA).
+
+ops-service (operations, tasks, units aggregation).
+
+geo-service (PostgreSQL + PostGIS; GeoJSON endpoints; proximity/within/intersects queries).
+
+message-service (channels, messages, attachments).
+
+report-service (SITREP/CONREP schemas, storage).
+
+realtime-service (WebSocket/SSE gateway for events).
+
+replay-service (event store + playback).
+
+av-signal-service (WebRTC signaling; room management; ties to SFU).
+
+DB: PostgreSQL + PostGIS; Liquibase/Flyway migrations.
+
+Object Storage: MinIO or S3-compatible for attachments/recordings.
+
+Events: Kafka or Redis Streams for internal pub/sub (position updates, task changes).
+
+Deploy: Docker Compose (dev) + Kubernetes manifests/Helm (prod). Nginx reverse proxy; TLS (mkcert/dev, cert-manager/prod).
+
+3) Monorepo Layout
+syss/
+  README.md
+  docker-compose.yml
+  k8s/ (manifests or Helm charts)
+  infra/ (scripts, mkcert, keycloak realm export, init SQL)
+  frontend/
+    app/
+    components/
+    lib/
+    services/
+    store/
+    public/
+    next.config.mjs
+    package.json
+    pnpm-lock.yaml
+  backend/
+    shared/ (DTOs, common lib)
+    auth-service/
+    ops-service/
+    geo-service/
+    message-service/
+    report-service/
+    realtime-service/
+    replay-service/
+    av-signal-service/
+    pom.xml (parent)
+  scripts/
+    dev-up.sh
+    dev-down.sh
+    seed.sh
+    check-env.sh
+
+4) Security & RBAC
+
+JWT tokens with roles: ADMIN, COMMANDER, ANALYST, FIELD_UNIT, OBSERVER.
+
+Method security with @PreAuthorize.
+
+CORS configured per env.
+
+Request validation (Bean Validation); object-level auth where needed (operation membership).
+
+Audit logging (who/what/when/from where).
+
+Rate limiting on public endpoints.
+
+2FA TOTP flow in auth-service (QR provision, verify); fallback to Keycloak if chosen.
+
+5) Data Model (essentials)
+
+User(id, name, role, unitId, …)
+
+Unit(id, name, type, parentUnitId, callsign, …)
+
+Operation(id, name, status, area:Polygon, start, end, ownerId, …)
+
+Task(id, operationId, type, geometry, assigneeUnitId, status, priority, dueAt, …)
+
+Position(id, unitId, time, geom:Point, speed, heading, source, …)
+
+Threat(id, operationId, geom, category, confidence, lastSeen, …)
+
+Message(id, operationId, channelId, senderId, body, attachments[])
+
+Report(id, operationId, type=SITREP/CONREP, fields(json), attachments[])
+
+Event(id, type, time, payload(json)) (for replay)
+
+AvRoom(id, operationId, title, startedAt, endedAt)
+
+AvParticipant(id, roomId, userId, joinedAt, leftAt, role)
+
+6) Backend APIs (examples)
+
+Use REST + WebSocket topics. Provide full OpenAPI via springdoc.
+
+Auth
+
+POST /auth/login → {accessToken, refreshToken}
+
+POST /auth/2fa/setup (QR) / POST /auth/2fa/verify
+
+Operations
+
+POST /ops (COMMANDER/ADMIN)
+
+GET /ops/:id (scoped)
+
+GET /ops/:id/summary (counts, heatmap meta)
+
+Tasks
+
+POST /ops/:id/tasks
+
+PATCH /tasks/:id/status
+
+Geo
+
+GET /geo/units/positions?bbox=… → GeoJSON FeatureCollection
+
+POST /geo/overlays (drawn layers)
+
+Spatial queries: GET /geo/search?within=polygon&layer=threats
+
+Messaging/Reports
+
+GET /messages?operationId=…
+
+POST /messages (with attachments to MinIO)
+
+POST /reports/sitrep
+
+Realtime
+
+WebSocket /ws topics:
+
+/topic/ops/{id}/positions
+
+/topic/ops/{id}/tasks
+
+/topic/ops/{id}/messages
+
+Replay
+
+POST /replay/bookmark
+
+GET /replay/ops/:id/timeline?from=&to=
+
+A/V Signaling
+
+POST /av/rooms (COMMANDER/ANALYST)
+
+POST /av/rooms/:id/join → returns ICE servers + tokens
+
+POST /av/rooms/:id/offer / answer / candidate
+
+POST /av/rooms/:id/recordings/start|stop
+
+GET /av/rooms/:id/participants
+
+Implement paging, sorting, ETags, and conditional requests where useful.
+
+7) Frontend Requirements
+
+Auth flow: login + 2FA; persist tokens securely; refresh logic.
+
+Role-based UI: routes & components gated by role.
+
+Map page:
+
+Client-only Leaflet wrapper (dynamic(() => import('…'), { ssr:false })).
+
+Layers: friendly, threats, incidents, tasks, overlays. Styling via NATO symbology component.
+
+Drawing tools (polygons, polylines, markers, buffer rings).
+
+Measurement + elevation (if DEM tiles optional).
+
+Operations dashboard: KPIs, filters, unit tree, task board (kanban).
+
+Messaging: channels per operation; attachments preview.
+
+Reports: SITREP/CONREP forms; print/export.
+
+A/V Conference UI:
+
+Join/Leave; video grid; mute/unmute; PTT; screenshare.
+
+Link room to operation; show participant roles; lock room.
+
+Offline:
+
+IndexedDB caches (operations, tasks, last known positions, messages stub).
+
+Mutation queue with retry; conflict UI to resolve.
+
+Replay:
+
+Timeline slider; play/pause; speed; map ghosts; charts for performance metrics.
+
+8) Real-time & Sync
+
+WebSocket client with exponential backoff.
+
+Commanded position pings from field unit clients throttle & batch.
+
+On reconnect, request delta via since=lastEventId. Maintain monotonically increasing eventId.
+
+9) Dev & Ops
+
+Docker Compose for dev:
+
+postgres:15 + postgis
+
+minio
+
+kafka (or redis if you prefer)
+
+jitsi stack or Node mediasoup SFU (choose one and integrate)
+
+Helm/K8s for prod: separate namespaces; secrets via Kubernetes Secrets; autoscaling hints.
+
+Nginx reverse proxy with TLS termination; WebSocket upgrades configured.
+
+CI script in README: build, test, docker build, compose up, seed.
+
+10) Error Fixes & Guardrails (implement now)
+
+Leaflet SSR: any imports from leaflet and plugins only in client components; guard window usage.
+
+React dep resolution: choose React 18.x; pin Radix/shadcn/vaul to compatible versions; ensure pnpm i or npm i passes cleanly.
+
+Spring Security:
+
+Parent: Spring Boot 3.3.x (managed deps).
+
+Add starters: spring-boot-starter-security, spring-boot-starter-oauth2-resource-server, spring-boot-starter-websocket, springdoc-openapi-starter-webmvc-ui, spring-boot-starter-validation, spring-boot-starter-web.
+
+Replace deprecated WebSocket security config with Boot 3 idioms; compile clean.
+
+IDB keys: validate operationId/unitId before getAll()/put; coerce to string keys; wrap in try/catch with telemetry.
+
+Docker perms: README section to add user to docker group; scripts detect and warn if not available.
+
+Next metadata warnings: move viewport/themeColor to generateViewport() per Next 15.
+
+11) Testing
+
+Backend: JUnit + Testcontainers (Postgres/PostGIS, MinIO, Kafka/Redis). WebSocket integration tests.
+
+Frontend: Vitest/RTL; Cypress e2e for: login+2FA, map render, draw overlay, assign task, receive real-time update, offline mutation + resync, start A/V call.
+
+Load tests: k6 script for WebSocket fan-out; API RPS targets documented.
+
+12) DX Scripts
+
+scripts/dev-up.sh: check env, start docker deps, generate .env, run backend services + frontend.
+
+scripts/dev-down.sh: stop & clean.
+
+scripts/seed.sh: create Admin/Commander users; seed sample operation in Addis Ababa bbox; spawn 10 units with moving tracks.
+
+infra/keycloak/realm.json: if using Keycloak, include realm/clients/roles; otherwise keep auth-service JWT only.
+
+13) Documentation
+
+README with:
+
+Quick start (one-liners).
+
+Service graph diagram.
+
+Port map.
+
+RBAC matrix.
+
+API URLs (OpenAPI UI links).
+
+Troubleshooting (Docker perms, Leaflet SSR, peer deps, PostGIS init, CORS, WebSocket behind Nginx).
+
+/docs/:
+
+ADRs for: WebRTC SFU choice, event store format, offline conflict policy.
+
+AAR usage guide; Replay tutorial.
+
+14) Acceptance Criteria (must pass)
+
+Start stack with a single command; login as Admin; create operation; see map with tiles.
+
+Spawn demo units; positions update live on map via WebSocket.
+
+Draw overlay; saved to backend; appears to other clients in real time.
+
+Create tasks; assign to units; status updates propagate; audit trail recorded.
+
+Send messages + upload an image; other client receives instantly.
+
+Go offline; change task status + add message; reconnect → changes sync without errors.
+
+Start A/V room on an operation; two browsers join; audio/video + screenshare function; room secured by role; room recorded; recording artifact stored.
+
+Run Replay on the demo operation; timeline scrubs; metrics view renders.
+
+All tests pass in CI; lint/typecheck clean; no runtime SSR crash; no npm peer conflict.
+
+Now generate the entire monorepo, code, configs, Docker/K8s manifests, tests, seeders, and documentation to satisfy all items above.
