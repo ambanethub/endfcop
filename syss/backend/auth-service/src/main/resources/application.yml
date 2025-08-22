@@ -1,0 +1,23 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/syss}
+    username: ${SPRING_DATASOURCE_USERNAME:syss}
+    password: ${SPRING_DATASOURCE_PASSWORD:syss}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+security:
+  jwt:
+    secret: ${JWT_SECRET:dev-secret-change}
+    issuer: syss-auth
+    access-ttl-seconds: 3600
+    refresh-ttl-seconds: 1209600
