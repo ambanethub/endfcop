@@ -1,0 +1,14 @@
+server:
+  port: 8080
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost/issuer
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+JITSI_PUBLIC_URL: ${JITSI_PUBLIC_URL:http://localhost:8443}
